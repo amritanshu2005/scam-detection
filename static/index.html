@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agentic Honey-Pot Dashboard</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <i class="fas fa-shield-alt"></i>
+                    <h1>Agentic Honey-Pot</h1>
+                </div>
+                <div class="status-indicator">
+                    <span class="status-dot active"></span>
+                    <span>System Active</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Dashboard -->
+        <div class="dashboard">
+            <!-- Left Panel - Message Input & Stats -->
+            <div class="left-panel">
+                <!-- Message Input Card -->
+                <div class="card message-input-card">
+                    <h2><i class="fas fa-comment-dots"></i> Simulate Scam Message</h2>
+                    <div class="input-group">
+                        <textarea 
+                            id="messageInput" 
+                            placeholder="Enter a scam message to test the system..."
+                            rows="4"
+                        ></textarea>
+                    </div>
+                    <div class="quick-examples">
+                        <span class="label">Quick Examples:</span>
+                        <button class="example-btn" onclick="setExample(0)">Bank Suspension</button>
+                        <button class="example-btn" onclick="setExample(1)">Prize Winner</button>
+                        <button class="example-btn" onclick="setExample(2)">UPI Verification</button>
+                        <button class="example-btn" onclick="setExample(3)">Phishing Link</button>
+                    </div>
+                    <button class="send-btn" onclick="sendMessage()">
+                        <i class="fas fa-paper-plane"></i> Process Message
+                    </button>
+                </div>
+
+                <!-- Statistics Card -->
+                <div class="card stats-card">
+                    <h2><i class="fas fa-chart-line"></i> Statistics</h2>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <div class="stat-value" id="totalMessages">0</div>
+                            <div class="stat-label">Messages Processed</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="scamsDetected">0</div>
+                            <div class="stat-label">Scams Detected</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="intelligenceFound">0</div>
+                            <div class="stat-label">Intelligence Items</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="avgEngagement">0s</div>
+                            <div class="stat-label">Avg Engagement</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Performance Metrics Card -->
+                <div class="card performance-card">
+                    <h2><i class="fas fa-tachometer-alt"></i> Performance</h2>
+                    <div class="performance-metrics">
+                        <div class="perf-item">
+                            <span class="perf-label">Avg Response Time:</span>
+                            <span class="perf-value" id="avgResponseTime">0ms</span>
+                        </div>
+                        <div class="perf-item">
+                            <span class="perf-label">Detection Accuracy:</span>
+                            <span class="perf-value" id="detectionAccuracy">-</span>
+                        </div>
+                        <div class="perf-item">
+                            <span class="perf-label">Agent Response Time:</span>
+                            <span class="perf-value" id="agentResponseTime">0ms</span>
+                        </div>
+                        <div class="perf-item">
+                            <span class="perf-label">System Uptime:</span>
+                            <span class="perf-value" id="systemUptime">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Intelligence Summary -->
+                <div class="card intelligence-card">
+                    <h2><i class="fas fa-search"></i> Extracted Intelligence</h2>
+                    <div class="intelligence-summary">
+                        <div class="intel-item">
+                            <i class="fas fa-university"></i>
+                            <span>Bank Accounts: <strong id="bankCount">0</strong></span>
+                        </div>
+                        <div class="intel-item">
+                            <i class="fas fa-mobile-alt"></i>
+                            <span>UPI IDs: <strong id="upiCount">0</strong></span>
+                        </div>
+                        <div class="intel-item">
+                            <i class="fas fa-link"></i>
+                            <span>Phishing URLs: <strong id="urlCount">0</strong></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel - Conversation & Details -->
+            <div class="right-panel">
+                <!-- Conversation Card -->
+                <div class="card conversation-card">
+                    <div class="card-header">
+                        <h2><i class="fas fa-comments"></i> Conversation</h2>
+                        <button class="clear-btn" onclick="clearConversation()">
+                            <i class="fas fa-trash"></i> Clear
+                        </button>
+                    </div>
+                    <div class="conversation-container" id="conversationContainer">
+                        <div class="empty-state">
+                            <i class="fas fa-inbox"></i>
+                            <p>No messages yet. Send a test message to start!</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Current Response Card -->
+                <div class="card response-card" id="responseCard" style="display: none;">
+                    <h2><i class="fas fa-robot"></i> Agent Response</h2>
+                    <div class="response-content">
+                        <div class="response-message" id="responseMessage"></div>
+                        <div class="response-metrics">
+                            <div class="metric">
+                                <span class="metric-label">Scam Detected:</span>
+                                <span class="metric-value" id="scamDetectedStatus">-</span>
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">Agent Activated:</span>
+                                <span class="metric-value" id="agentActivatedStatus">-</span>
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">Turn Count:</span>
+                                <span class="metric-value" id="turnCount">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Intelligence Details -->
+                <div class="card intelligence-details-card" id="intelligenceDetails" style="display: none;">
+                    <h2><i class="fas fa-database"></i> Intelligence Details</h2>
+                    <div class="intelligence-details-content">
+                        <div class="intel-section">
+                            <h3><i class="fas fa-university"></i> Bank Accounts</h3>
+                            <div class="intel-list" id="bankAccountsList"></div>
+                        </div>
+                        <div class="intel-section">
+                            <h3><i class="fas fa-mobile-alt"></i> UPI IDs</h3>
+                            <div class="intel-list" id="upiIdsList"></div>
+                        </div>
+                        <div class="intel-section">
+                            <h3><i class="fas fa-link"></i> Phishing URLs</h3>
+                            <div class="intel-list" id="phishingUrlsList"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>
+
