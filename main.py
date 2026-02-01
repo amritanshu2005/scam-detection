@@ -27,8 +27,12 @@ import time
 
 app = FastAPI(title="Agentic Honey-Pot API", version="1.0.0")
 
-# Mount static files
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# Mount static files (with error handling for Vercel)
+try:
+    app.mount("/static", StaticFiles(directory="static"), name="static")
+except Exception:
+    # Fallback for serverless environments
+    pass
 
 # CORS middleware for public API access
 app.add_middleware(
