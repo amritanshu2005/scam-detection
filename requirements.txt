@@ -5,3 +5,4 @@ python-multipart==0.0.12
 python-dotenv==1.0.1
 requests==2.32.3
 google-generativeai==0.8.3
+mangum==0.17.0
