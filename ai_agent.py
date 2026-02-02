@@ -18,7 +18,7 @@ except ImportError:
 
 class AutonomousAgent:
     """Autonomous AI agent that engages scammers"""
-    
+
     def __init__(self):
         self.openai_client = None
         if OPENAI_AVAILABLE:
@@ -34,16 +34,17 @@ class AutonomousAgent:
                     openai.api_key = api_key
                     self.openai_client = openai
                     self.use_new_client = False
-        
+
         # Persona traits - maintain consistent believable human behavior
+        # Persona traits - maintain believable human behavior
         self.persona = {
-            "name": "Alex",
-            "age_range": "30-40",
-            "personality": "curious but cautious, asks questions, seems interested but not too eager",
-            "communication_style": "casual, uses emojis occasionally, may have typos",
-            "engagement_strategy": "gradual - starts skeptical, becomes more interested over time"
+            "name": "Ramesh",
+            "age_range": "65-75",
+            "personality": "worried, non-tech-savvy, elderly, wants to protect his pension, easily confused but cooperative",
+            "communication_style": "polite, formal English mixed with confusion, uses caps for emphasis occasionally, very slow to understand tech terms",
+            "engagement_strategy": "feign ignorance, ask for help repeatedly, provide wrong details 'accidentally' to frustrate scammer into revealing their own details"
         }
-        
+
         # Conversation state
         self.conversation_stages = {
             "initial": "skeptical, asking questions",
@@ -51,7 +52,7 @@ class AutonomousAgent:
             "engaged": "actively participating, requesting specific information",
             "extracting": "asking for account details, UPI, links"
         }
-    
+
     def generate_response(
         self,
         incoming_message: str,
@@ -60,24 +61,24 @@ class AutonomousAgent:
     ) -> str:
         """
         Generate agent response to scammer message
-        
+
         Args:
             incoming_message: Latest message from scammer
             conversation_history: Full conversation history
             extracted_intelligence: Already extracted intelligence
-            
+
         Returns:
             Agent's response message
         """
         # Determine conversation stage
         stage = self._determine_stage(conversation_history, extracted_intelligence)
-        
+
         # Use OpenAI if available, otherwise use rule-based
         if self.openai_client and os.getenv("OPENAI_API_KEY"):
             return self._generate_llm_response(incoming_message, conversation_history, stage)
         else:
             return self._generate_rule_based_response(incoming_message, conversation_history, stage, extracted_intelligence)
-    
+
     def _determine_stage(
         self,
         conversation_history: List[Dict[str, Any]],
@@ -85,12 +86,12 @@ class AutonomousAgent:
     ) -> str:
         """Determine current conversation stage with intelligence awareness"""
         turn_count = len([m for m in conversation_history if m.get("role") == "agent"])
-        
+
         # Check what intelligence we've already extracted
         has_bank = len(extracted_intelligence.get("bank_accounts", [])) > 0
         has_upi = len(extracted_intelligence.get("upi_ids", [])) > 0
         has_url = len(extracted_intelligence.get("phishing_urls", [])) > 0
-        
+
         # Adjust stage based on what we still need
         if turn_count == 0:
             return "initial"
@@ -103,7 +104,7 @@ class AutonomousAgent:
             return "extracting"
         else:
             return "extracting"
-    
+
     def _generate_llm_response(
         self,
         incoming_message: str,
@@ -116,23 +117,21 @@ class AutonomousAgent:
             messages = [
                 {
                     "role": "system",
-                    "content": f"""You are {self.persona['name']}, a believable human engaging with a potential scammer.
-Your goal is to extract intelligence (bank accounts, UPI IDs, phishing URLs) without revealing you're detecting a scam.
+                    "content": f"""You are {self.persona['name']}, an elderly man ({self.persona['age_range']}) engaging with a potential scammer.
+You are worried about your money/pension and want to solve the 'problem' they talk about, but you are bad with technology.
 
 Persona: {self.persona['personality']}
-Communication style: {self.persona['communication_style']}
-Current stage: {stage}
+Communication: {self.persona['communication_style']}
+Strategy: {self.persona['engagement_strategy']}
 
-Guidelines:
-- Act naturally and believably
-- Don't reveal you know it's a scam
-- Gradually show interest and ask for details
-- Request bank account numbers, UPI IDs, and links when appropriate
-- Keep responses concise (1-3 sentences)
-- Use casual, human-like language"""
+GOAL: Keep them talking. Act confused. Make them explain things 3 times.
+Eventually, trick them into giving YOU their bank/UPI details so you can 'deposit' money or 'verify' the connection.
+Do NOT reveal you know it's a scam. Act like a scared victim who needs help.
+
+Stage: {stage}"""
                 }
             ]
-            
+
             # Add conversation history
             for msg in conversation_history[-10:]:  # Last 10 messages for context
                 role = "user" if msg.get("role") == "scammer" else "assistant"
@@ -140,7 +139,7 @@ Guidelines:
                     "role": role,
                     "content": msg.get("content", "")
                 })
-            
+
             # Generate response
             if hasattr(self, 'use_new_client') and self.use_new_client:
                 # New OpenAI client format (v1.x)
@@ -160,11 +159,11 @@ Guidelines:
                     max_tokens=150
                 )
                 return response.choices[0].message.content.strip()
-            
+
         except Exception as e:
             # Fallback to rule-based if LLM fails
             return self._generate_rule_based_response(incoming_message, conversation_history, stage, {})
-    
+
     def _generate_rule_based_response(
         self,
         incoming_message: str,
@@ -175,7 +174,7 @@ Guidelines:
         """Generate response using rule-based approach"""
         message_lower = incoming_message.lower()
         turn_count = len([m for m in conversation_history if m.get("role") == "agent"])
-        
+
         # Stage-based responses
         if stage == "initial":
             responses = [
@@ -184,7 +183,7 @@ Guidelines:
                 "This is the first I'm hearing about this. Can you provide more details?",
                 "I want to make sure this is legitimate. Can you explain what this is about?",
             ]
-        
+
         elif stage == "interested":
             responses = [
                 "Okay, I'm listening. How does this work exactly?",
@@ -192,7 +191,7 @@ Guidelines:
                 "I see. What's the next step?",
                 "Alright, I'm interested. What should I do?",
             ]
-        
+
         elif stage == "engaged":
             # Start asking for specific details
             if "account" in message_lower or "bank" in message_lower:
@@ -219,7 +218,7 @@ Guidelines:
                     "Sure, I can help with that. What information should I provide?",
                     "Okay, I'm ready. What do you need?",
                 ]
-        
+
         else:  # extracting stage
             # Actively request intelligence
             if not extracted_intelligence.get("bank_accounts"):
@@ -246,10 +245,10 @@ Guidelines:
                     "Understood. I'm working on it.",
                     "Okay, I'll take care of it.",
                 ]
-        
+
         # Select response based on turn count for variety
         selected = responses[turn_count % len(responses)]
-        
+
         # Context-aware response adjustments
         # Reference previous messages for better continuity
         if len(conversation_history) > 1:
@@ -258,23 +257,23 @@ Guidelines:
                 if msg.get("role") == "scammer":
                     last_scammer_msg = msg.get("content", "").lower()
                     break
-            
+
             # If scammer mentioned specific details, acknowledge them
             if last_scammer_msg:
                 if "account" in last_scammer_msg and "account" not in selected.lower():
                     selected = selected.replace("details", "account details")
                 if "upi" in last_scammer_msg and "upi" not in selected.lower():
                     selected = selected.replace("payment", "UPI payment")
-        
+
         # Add occasional casual elements for naturalness
         if turn_count % 3 == 0 and turn_count > 0:
             selected = selected.replace(".", " 😊")
-        
+
         # Ensure response is not too short or too long
         if len(selected) < 10:
             selected = selected + " Please tell me more."
         if len(selected) > 200:
             selected = selected[:197] + "..."
-        
+
         return selected
 

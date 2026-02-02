@@ -3,17 +3,16 @@ Agentic Honey-Pot API Server
 Main entry point for scam detection and intelligence extraction system
 """
 
-from fastapi import FastAPI, HTTPException, Header, Depends
+from fastapi import FastAPI, HTTPException, Header, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 import os
-import uuid
-from datetime import datetime
-import re
+import time
 from dotenv import load_dotenv
+import requests
 
 # Load environment variables
 load_dotenv()
@@ -21,20 +20,19 @@ load_dotenv()
 from scam_detector import ScamDetector
 from ai_agent import AutonomousAgent
 from intelligence_extractor import IntelligenceExtractor
-from logger import log_message_processing, log_agent_activation, log_intelligence_extraction, log_error, log_api_request
+from logger import log_error
 from performance import performance_monitor
-import time
 
 app = FastAPI(title="Agentic Honey-Pot API", version="1.0.0")
 
-# Mount static files (with error handling for Vercel)
+# Mount static files (with error handling)
 try:
-    app.mount("/static", StaticFiles(directory="static"), name="static")
+    if os.path.exists("static"):
+        app.mount("/static", StaticFiles(directory="static"), name="static")
 except Exception:
-    # Fallback for serverless environments
     pass
 
-# CORS middleware for public API access
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -43,235 +41,153 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# In-memory conversation storage (use Redis/DB in production)
-conversations: Dict[str, Dict[str, Any]] = {}
-
-# API Key validation
+# Configuration
 API_KEY = os.getenv("API_KEY", "your-secret-api-key-here")
+CALLBACK_URL = "https://hackathon.guvi.in/api/updateHoneyPotFinalResult"
 
-def verify_api_key(x_api_key: str = Header(...)):
+# Components
+scam_detector = ScamDetector()
+ai_agent = AutonomousAgent()
+# Use a global instance or per-request? Global is fine for stateless extractor
+intelligence_extractor = IntelligenceExtractor()
+
+# --- Pydantic Models for Hackathon API ---
+
+class MessageDetail(BaseModel):
+    sender: str  # "scammer" or "user"
+    text: str
+    timestamp: str
+
+class IncomingRequest(BaseModel):
+    sessionId: str
+    message: MessageDetail
+    conversationHistory: List[MessageDetail] = Field(default_factory=list)
+    metadata: Optional[Dict[str, Any]] = None
+
+class SuccessResponse(BaseModel):
+    status: str
+    reply: str
+
+# --- Helper Functions ---
+
+def verify_api_key(x_api_key: str = Header(None)):
     """Verify API key from header"""
-    if x_api_key != API_KEY:
+    # If API_KEY env var is set, enforce it. Otherwise, allow open access (for testing flexibility)
+    # But for Hackathon, usually specific.
+    if API_KEY and x_api_key != API_KEY:
         raise HTTPException(status_code=401, detail="Invalid API key")
     return x_api_key
 
+def send_callback(session_id: str, is_scam: bool, total_messages: int, intelligence: Dict[str, Any], agent_notes: str):
+    """Send callback to Guvi API"""
+    try:
+        payload = {
+            "sessionId": session_id,
+            "scamDetected": is_scam,
+            "totalMessagesExchanged": total_messages,
+            "extractedIntelligence": {
+                "bankAccounts": intelligence.get('bank_accounts', []),
+                "upiIds": intelligence.get('upi_ids', []),
+                "phishingLinks": intelligence.get('phishing_urls', []),
+                "phoneNumbers": intelligence.get('phone_numbers', []),
+                "suspiciousKeywords": intelligence.get('suspicious_keywords', [])
+            },
+            "agentNotes": agent_notes
+        }
 
-class MessageRequest(BaseModel):
-    """Incoming message from Mock Scammer API"""
-    message: str = Field(..., description="The scam message content")
-    conversation_id: Optional[str] = Field(None, description="Existing conversation ID for multi-turn")
-    sender_id: Optional[str] = Field(None, description="Sender/scammer identifier")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
+        # Fire and forget callback (timeout short)
+        requests.post(CALLBACK_URL, json=payload, timeout=3)
+    except Exception as e:
+        # Just log error, don't crash main thread
+        print(f"Callback failed for {session_id}: {e}")
 
-
-class IntelligenceData(BaseModel):
-    """Extracted intelligence structure"""
-    bank_accounts: List[str] = Field(default_factory=list, description="Extracted bank account numbers")
-    upi_ids: List[str] = Field(default_factory=list, description="Extracted UPI IDs")
-    phishing_urls: List[str] = Field(default_factory=list, description="Extracted phishing URLs")
-    other_intelligence: Dict[str, Any] = Field(default_factory=dict, description="Other extracted information")
-
-
-class ResponseOutput(BaseModel):
-    """Structured API response"""
-    conversation_id: str = Field(..., description="Unique conversation identifier")
-    scam_detected: bool = Field(..., description="Whether scam intent was detected")
-    agent_activated: bool = Field(..., description="Whether autonomous agent is active")
-    response_message: str = Field(..., description="Agent's response to the scammer")
-    engagement_metrics: Dict[str, Any] = Field(..., description="Engagement statistics")
-    extracted_intelligence: IntelligenceData = Field(..., description="Extracted intelligence")
-    timestamp: str = Field(..., description="Response timestamp")
-
-
-# Initialize components
-scam_detector = ScamDetector()
-ai_agent = AutonomousAgent()
-intelligence_extractor = IntelligenceExtractor()
-
+# --- Endpoints ---
 
 @app.get("/")
 async def root():
-    """Serve the dashboard UI"""
-    return FileResponse("static/index.html")
+    if os.path.exists("static/index.html"):
+        return FileResponse("static/index.html")
+    return {"message": "Agentic Honey-Pot API Active"}
 
 @app.get("/api/health")
 async def health():
-    """Health check endpoint"""
-    return {
-        "status": "active",
-        "service": "Agentic Honey-Pot API",
-        "version": "1.0.0"
-    }
+    return {"status": "active", "service": "Agentic Honey-Pot API"}
 
-
-@app.post("/api/v1/message", response_model=ResponseOutput)
+@app.post("/api/v1/message", response_model=SuccessResponse)
 async def process_message(
-    request: MessageRequest,
-    api_key: str = Depends(verify_api_key)
+    request: IncomingRequest,
+    background_tasks: BackgroundTasks,
+    x_api_key: str = Depends(verify_api_key)
 ):
     """
-    Main endpoint to process incoming scam messages
-    
-    Accepts messages from Mock Scammer API, detects scam intent,
-    activates autonomous agent if needed, and extracts intelligence.
+    Main webhook for Hackathon.
     """
     start_time = time.time()
-    conversation_id = None
-    
+
     try:
-        # Get or create conversation
-        conversation_id = request.conversation_id or str(uuid.uuid4())
-        
-        # Log message processing start
-        log_message_processing(conversation_id, request.message, False)
-        
-        if conversation_id not in conversations:
-            conversations[conversation_id] = {
-                "messages": [],
-                "scam_detected": False,
-                "agent_activated": False,
-                "turn_count": 0,
-                "start_time": datetime.utcnow().isoformat(),
-                "intelligence": {
-                    "bank_accounts": [],
-                    "upi_ids": [],
-                    "phishing_urls": [],
-                    "other": {}
-                }
-            }
-        
-        conv = conversations[conversation_id]
-        
-        # Add incoming message to history
-        conv["messages"].append({
-            "role": "scammer",
-            "content": request.message,
-            "timestamp": datetime.utcnow().isoformat()
-        })
-        conv["turn_count"] += 1
-        
-        # Detect scam intent (if not already detected)
-        if not conv["scam_detected"]:
-            detection_start = time.time()
-            conv["scam_detected"] = scam_detector.detect(request.message, conv["messages"])
-            performance_monitor.record_detection_time(time.time() - detection_start)
-            log_message_processing(conversation_id, request.message, conv["scam_detected"])
-        
-        # Activate agent if scam detected
-        agent_activated = False
-        response_message = ""
-        
-        if conv["scam_detected"]:
-            if not conv["agent_activated"]:
-                conv["agent_activated"] = True
-                # Determine stage for logging
-                turn_count = len([m for m in conv["messages"] if m.get("role") == "agent"])
-                stage = "initial" if turn_count == 0 else "engaged"
-                log_agent_activation(conversation_id, stage)
-            
-            agent_activated = True
-            
-            # Generate agent response
-            agent_start = time.time()
-            response_message = ai_agent.generate_response(
-                request.message,
-                conv["messages"],
-                conv["intelligence"]
-            )
-            performance_monitor.record_agent_time(time.time() - agent_start)
-            
-            # Add agent response to history
-            conv["messages"].append({
-                "role": "agent",
-                "content": response_message,
-                "timestamp": datetime.utcnow().isoformat()
+        session_id = request.sessionId
+        current_msg_text = request.message.text
+
+        # Convert Pydantic models to dicts for internal tools
+        # Our tools expect: [{"role": "scammer/agent", "content": "..."}]
+        internal_history = []
+        for msg in request.conversationHistory:
+            role = "scammer" if msg.sender == "scammer" else "agent"
+            internal_history.append({
+                "role": role,
+                "content": msg.text,
+                # timestamp optional or formatted
             })
-        
-        # Extract intelligence from conversation
-        extraction_start = time.time()
-        intelligence = intelligence_extractor.extract(conv["messages"])
-        performance_monitor.record_extraction_time(time.time() - extraction_start)
-        
-        # Update conversation intelligence (merge new findings)
-        for key in ["bank_accounts", "upi_ids", "phishing_urls"]:
-            conv["intelligence"][key] = list(set(conv["intelligence"][key] + intelligence[key]))
-        
-        conv["intelligence"]["other"].update(intelligence.get("other", {}))
-        
-        # Log intelligence extraction if new items found
-        if any(len(intelligence[key]) > 0 for key in ["bank_accounts", "upi_ids", "phishing_urls"]):
-            log_intelligence_extraction(conversation_id, intelligence)
-        
-        # Calculate engagement metrics
-        engagement_metrics = {
-            "turn_count": conv["turn_count"],
-            "conversation_duration_seconds": (
-                datetime.utcnow() - datetime.fromisoformat(conv["start_time"])
-            ).total_seconds(),
-            "messages_exchanged": len(conv["messages"]),
-            "intelligence_items_found": (
-                len(conv["intelligence"]["bank_accounts"]) +
-                len(conv["intelligence"]["upi_ids"]) +
-                len(conv["intelligence"]["phishing_urls"])
-            )
-        }
-        
-        # Prepare response
-        response = ResponseOutput(
-            conversation_id=conversation_id,
-            scam_detected=conv["scam_detected"],
-            agent_activated=agent_activated,
-            response_message=response_message,
-            engagement_metrics=engagement_metrics,
-            extracted_intelligence=IntelligenceData(
-                bank_accounts=conv["intelligence"]["bank_accounts"],
-                upi_ids=conv["intelligence"]["upi_ids"],
-                phishing_urls=conv["intelligence"]["phishing_urls"],
-                other_intelligence=conv["intelligence"]["other"]
-            ),
-            timestamp=datetime.utcnow().isoformat()
+
+        # Add current message to history for context
+        internal_history.append({
+            "role": "scammer",
+            "content": current_msg_text
+        })
+
+        # 2. Detect Scam
+        is_scam = scam_detector.detect(current_msg_text, internal_history)
+
+        # 3. Extract Intelligence (Full history scan)
+        intelligence = intelligence_extractor.extract(internal_history)
+
+        # 4. Agent Response
+        agent_reply = ai_agent.generate_response(current_msg_text, internal_history, intelligence)
+
+        # 5. Check for Callback Trigger
+        # Trigger if critical info found OR conversation > 10 turns
+        critical_info_found = (
+            len(intelligence.get('bank_accounts', [])) > 0 or
+            len(intelligence.get('upi_ids', [])) > 0 or
+            len(intelligence.get('phone_numbers', [])) > 0
         )
-        
-        # Log successful request and record performance
-        response_time = time.time() - start_time
-        performance_monitor.record_response_time(response_time)
-        log_api_request("/api/v1/message", "POST", 200, response_time)
-        
-        return response
-        
+
+        turn_count = len(internal_history)
+
+        if critical_info_found or turn_count > 10:
+            agent_notes = "Scam detected."
+            if critical_info_found:
+                agent_notes += " Intelligence extracted."
+            if turn_count > 10:
+                agent_notes += " Max turns exceeded."
+
+            # Run callback in background to keep response fast
+            background_tasks.add_task(
+                send_callback,
+                session_id,
+                is_scam,
+                turn_count,
+                intelligence,
+                agent_notes
+            )
+
+        # 6. Return Response
+        return SuccessResponse(status="success", reply=agent_reply)
+
     except Exception as e:
-        response_time = time.time() - start_time
-        performance_monitor.record_error()
-        log_error(conversation_id, e, "process_message")
-        log_api_request("/api/v1/message", "POST", 500, response_time)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-
-
-@app.get("/api/v1/conversation/{conversation_id}")
-async def get_conversation(
-    conversation_id: str,
-    api_key: str = Depends(verify_api_key)
-):
-    """Retrieve conversation history and status"""
-    if conversation_id not in conversations:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-    
-    return conversations[conversation_id]
-
-
-@app.get("/api/v1/metrics")
-async def get_metrics(api_key: str = Depends(verify_api_key)):
-    """Get system performance metrics"""
-    return {
-        "performance": performance_monitor.get_stats(),
-        "conversations": {
-            "total": len(conversations),
-            "active": len([c for c in conversations.values() if c.get("agent_activated", False)])
-        }
-    }
-
+        log_error(request.sessionId, e, "process_message")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
