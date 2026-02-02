@@ -3,7 +3,7 @@ import json
 import time
 
 # Configuration
-API_URL = "http://localhost:8000/api/v1/message"
+API_URL = "http://127.0.0.1:8000/api/v1/message"
 # Assuming API_KEY is set in environment or default
 API_KEY = "your-secret-api-key-here"
 
