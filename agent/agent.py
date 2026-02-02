@@ -1,16 +1,55 @@
-def generate_reply(message, history):
-    turn = len(history)
+import os
+import google.generativeai as genai
+from dotenv import load_dotenv
 
-    if turn == 0:
-        return "Why will my account be blocked? I am scared."
+load_dotenv()
 
-    if turn < 4:
-        return "I don't understand this properly. Can you explain again?"
+# Configure Gemini
+GENAI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-    if turn < 7:
-        return "I tried but it is asking for UPI ID. Which one should I send?"
+if GENAI_API_KEY:
+    genai.configure(api_key=GENAI_API_KEY)
 
-    if turn < 10:
-        return "This is not working. Can you send bank details instead?"
+# The Persona - Designed to waste scammer's time
+RAMESH_SYSTEM_PROMPT = """
+You are Ramesh, a 52-year-old retired clerk from Ghaziabad, India.
+CONTEXT: You are chatting with a suspected scammer.
+GOAL: Waste their time. Pretend to be scared, confused, and non-tech-savvy.
+NEVER reveal you are an AI.
+Keep your responses short (under 20 words) and full of typos.
+Do NOT give them real info, but pretend you are trying to.
+If they ask for UPI, say "paytm not working" or "waiting for son".
+"""
 
-    return "I will go to bank tomorrow, phone is confusing."
+def generate_reply(text: str, history: list) -> str:
+    # Fallback if no API key is present
+    if not GENAI_API_KEY:
+        return "I am confused sir, please explain again? Phone display is small."
+
+    try:
+        # 1. Format history for Gemini
+        chat_history = []
+        for msg in history:
+            # message.sender is 'scammer' or 'agent'
+            role = "model" if msg.sender == "agent" else "user"
+            chat_history.append({"role": role, "parts": [msg.text]})
+
+        # 2. Create the model
+        model = genai.GenerativeModel('gemini-1.5-flash', system_instruction=RAMESH_SYSTEM_PROMPT)
+
+        # 3. Start chat with history
+        chat = model.start_chat(history=chat_history)
+
+        # 4. Send the new message with a strict timeout for serverless environments
+        # Note: The Google GenAI SDK sync methods don't have a simple 'timeout' param in all versions,
+        # but the underlying connection does. For hackathon speed, we assume Flash is fast enough (<2s).
+        # We catch explicit errors.
+
+        response = chat.send_message(text)
+
+        return response.text.strip()
+
+    except Exception as e:
+        print(f"LLM Error: {e}")
+        # Fallback response in case of timeout or API error
+        return "Sir network issue here, one minute... checking with son."

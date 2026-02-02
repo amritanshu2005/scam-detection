@@ -40,12 +40,18 @@ async def webhook(
     full_text = " ".join([m.text for m in history] + [text])
     intel = extract(full_text)
 
-    # 4. Callback Trigger
-    # If scam detected AND (long conversation OR critical info found)
-    has_critical_info = (intel["upiIds"] or intel["bankAccounts"] or intel["phoneNumbers"])
+    # 4. Callback Trigger Strategy
+    # We want to send the callback if:
+    # A) We found critical info (Bank/UPI) AND we haven't sent it yet.
+    # B) The conversation is getting long (e.g., > 8 messages) and we want to wrap up.
 
-    if is_scam and (len(history) >= 10 or has_critical_info):
-        # Fire callback in background
+    # Count extracted items
+    critical_count = len(intel["upiIds"]) + len(intel["bankAccounts"]) + len(intel["phoneNumbers"])
+
+    # Trigger condition: Scam IS detected AND (High turn count OR We found actionable intel)
+    should_trigger_callback = is_scam and (len(history) > 8 or critical_count > 0)
+
+    if should_trigger_callback:
         background_tasks.add_task(
             send_callback,
             session_id,

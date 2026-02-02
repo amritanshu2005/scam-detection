@@ -75,8 +75,9 @@ This endpoint handles incoming messages, detects scams, generates a response fro
 
 ## Features
 
+- **Generative AI Persona ("Ramesh")**: Utilizes Google Gemini 1.5 Flash to simulate a hyper-realistic, non-tech-savvy persona that dynamically adapts to scammer tactics, effectively wasting their time while extracting intelligence.
 - **Scam Detection**: Uses keyword analysis to identify potential scams.
-- **Rule-Based Agent**: Simulates a non-tech-savvy persona to engage with scammers.
+- **Rule-Based Fallback**: Ensures reliability even if the AI service encounters issues.
 - **Intelligence Extraction**: Extracts phone numbers, UPI IDs, and bank account details from the conversation.
 - **Callback Mechanism**: Automatically sends conversation data to the hackathon platform when specific criteria are met.
 

@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-API_KEY = os.getenv("API_KEY", "your-secret-api-key-here")
+API_KEY = os.getenv("API_KEY", "default-secret-key")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 CALLBACK_URL = "https://hackathon.guvi.in/api/updateHoneyPotFinalResult"
-CALLBACK_TIMEOUT = 5
+TIMEOUT = 5
