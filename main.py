@@ -703,6 +703,5 @@ async def webhook(
         reply=reply
     )
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+# NOTE: Do NOT run uvicorn here for Vercel serverless
+# The app is run through Mangum adapter in api/index.py
