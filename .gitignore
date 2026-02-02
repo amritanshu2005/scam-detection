@@ -24,11 +24,9 @@ wheels/
 *.egg
 
 # Environment
-.env
 .venv
 
 # IDE
-.vscode/
 .idea/
 *.swp
 *.swo
@@ -50,3 +48,5 @@ digest.txt
 
 simulate_judge.py
 simulate_judge.py
+config.bat
+node_modules
