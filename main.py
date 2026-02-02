@@ -1,5 +1,8 @@
 from fastapi import FastAPI, Header, HTTPException, BackgroundTasks
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
 # Import our strict modules
@@ -12,18 +15,20 @@ from config import API_KEY
 
 load_dotenv()
 
-from fastapi.staticfiles import StaticFiles
-from fastapi import FastAPI, Header, HTTPException, BackgroundTasks
-import os
-from fastapi.responses import FileResponse
-
 app = FastAPI()
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# Mount static files - with proper path for Vercel
+static_path = Path(__file__).parent / "static"
+if static_path.exists():
+    app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
 
 @app.get("/")
 async def read_root():
-    return FileResponse('static/index.html')
+    """Serve the main HTML page"""
+    html_path = Path(__file__).parent / "static" / "index.html"
+    if html_path.exists():
+        return FileResponse(str(html_path))
+    return {"message": "Scam Detection API", "status": "running", "endpoints": ["/api/v1/message"]}
 
 def verify_api_key(x_api_key: str):
     if x_api_key != API_KEY:
