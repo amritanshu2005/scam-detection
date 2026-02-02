@@ -35,7 +35,7 @@ def generate_reply(text: str, history: list) -> str:
             chat_history.append({"role": role, "parts": [msg.text]})
 
         # 2. Create the model - Using 1.5 Pro for best persona adherence
-        model = genai.GenerativeModel('gemini-1.5-pro', system_instruction=RAMESH_SYSTEM_PROMPT)
+        model = genai.GenerativeModel('gemini-2.0-flash', system_instruction=RAMESH_SYSTEM_PROMPT)
 
         # 3. Start chat with history
         chat = model.start_chat(history=chat_history)

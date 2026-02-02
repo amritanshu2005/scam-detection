@@ -48,3 +48,5 @@ logs/
 htmlcov/
 digest.txt
 
+simulate_judge.py
+simulate_judge.py

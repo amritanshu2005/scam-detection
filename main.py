@@ -12,7 +12,18 @@ from config import API_KEY
 
 load_dotenv()
 
+from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI, Header, HTTPException, BackgroundTasks
+import os
+from fastapi.responses import FileResponse
+
 app = FastAPI()
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/")
+async def read_root():
+    return FileResponse('static/index.html')
 
 def verify_api_key(x_api_key: str):
     if x_api_key != API_KEY:
