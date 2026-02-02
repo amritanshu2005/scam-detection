@@ -1,8 +1,6 @@
 from fastapi import FastAPI, Header, HTTPException, BackgroundTasks
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse
 import os
-from pathlib import Path
 from dotenv import load_dotenv
 
 # Import our strict modules
@@ -15,20 +13,36 @@ from config import API_KEY
 
 load_dotenv()
 
-app = FastAPI()
+app = FastAPI(title="Scam Detection API")
 
-# Mount static files - with proper path for Vercel
-static_path = Path(__file__).parent / "static"
-if static_path.exists():
-    app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
-
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
 async def read_root():
-    """Serve the main HTML page"""
-    html_path = Path(__file__).parent / "static" / "index.html"
-    if html_path.exists():
-        return FileResponse(str(html_path))
-    return {"message": "Scam Detection API", "status": "running", "endpoints": ["/api/v1/message"]}
+    """Serve a simple landing page"""
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Scam Detection API</title>
+        <style>
+            body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
+            h1 { color: #333; }
+            .status { color: #28a745; font-weight: bold; }
+            .endpoint { background: #f4f4f4; padding: 10px; border-radius: 5px; margin: 10px 0; }
+            code { background: #e8e8e8; padding: 2px 6px; border-radius: 3px; }
+        </style>
+    </head>
+    <body>
+        <h1>🛡️ Scam Detection API</h1>
+        <p class="status">✅ Status: Running</p>
+        <h2>API Endpoint:</h2>
+        <div class="endpoint">
+            <strong>POST</strong> <code>/api/v1/message</code>
+        </div>
+        <h2>Documentation:</h2>
+        <p>Visit <a href="/docs">/docs</a> for interactive API documentation</p>
+    </body>
+    </html>
+    """
 
 def verify_api_key(x_api_key: str):
     if x_api_key != API_KEY:
