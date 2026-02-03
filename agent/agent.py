@@ -1,19 +1,17 @@
 """
-AI Agent Module - Ramesh Persona with Model Fallback
+AI Agent Module - Ramesh Persona using Groq Cloud API
 Generates believable responses to waste scammer's time while extracting intelligence.
 """
 
 import os
-import google.generativeai as genai
+from groq import Groq
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Configure Gemini
-GENAI_API_KEY = os.getenv("GEMINI_API_KEY")
-
-if GENAI_API_KEY:
-    genai.configure(api_key=GENAI_API_KEY)
+# Configure Groq
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 # The Persona - Designed to waste scammer's time
 RAMESH_SYSTEM_PROMPT = """
@@ -26,7 +24,7 @@ Do NOT give them real info, but pretend you are trying to.
 If they ask for UPI, say "paytm not working" or "waiting for son".
 """
 
-# Fallback responses for when both models fail
+# Fallback responses for when API fails
 FALLBACK_RESPONSES = [
     "Beta? What is beta? Sir I am using WhatsApp only.",
     "Sir network issue here, one minute... checking with son.",
@@ -38,7 +36,7 @@ FALLBACK_RESPONSES = [
 
 def generate_reply(text: str, history: list) -> str:
     """
-    Generate a believable honeypot response using Gemini AI.
+    Generate a believable honeypot response using Groq Cloud API.
 
     Args:
         text: The scammer's latest message
@@ -48,44 +46,46 @@ def generate_reply(text: str, history: list) -> str:
         A response from the Ramesh persona
     """
     # Fallback if no API key is present
-    if not GENAI_API_KEY:
+    if not client:
         return FALLBACK_RESPONSES[0]
 
-    # Format history for Gemini
-    chat_history = []
+    # Format history for Groq (OpenAI-compatible format)
+    messages = [{"role": "system", "content": RAMESH_SYSTEM_PROMPT}]
+
     for msg in history:
         # PS JSON uses 'user' for the honeypot bot, 'scammer' for the attacker
-        # Gemini uses 'model' for the bot, 'user' for the prompter
         if msg.sender == "user" or msg.sender == "agent":
-            role = "model"  # Honeypot responses
+            role = "assistant"  # Honeypot responses
         else:
-            role = "user"   # Scammer messages
-        chat_history.append({"role": role, "parts": [msg.text]})
+            role = "user"  # Scammer messages
+        messages.append({"role": role, "content": msg.text})
 
-    # Try primary model (Gemini 2.0 Flash - fastest)
+    # Add the current scammer message
+    messages.append({"role": "user", "content": text})
+
+    # Try Groq API with llama-3.3-70b-versatile (fast and capable)
     try:
-        model = genai.GenerativeModel(
-            'gemini-2.0-flash',
-            system_instruction=RAMESH_SYSTEM_PROMPT
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=messages,
+            max_tokens=50,
+            temperature=0.7,
         )
-        chat = model.start_chat(history=chat_history)
-        response = chat.send_message(text)
-        return response.text.strip()
+        return response.choices[0].message.content.strip()
 
     except Exception as e:
-        print(f"Gemini 2.0 Error: {e}")
+        print(f"Groq API Error: {e}")
 
-        # Try fallback model (Gemini 1.5 Flash - more stable)
+        # Try fallback model
         try:
-            model_fallback = genai.GenerativeModel(
-                'gemini-pro',
-                system_instruction=RAMESH_SYSTEM_PROMPT
+            response = client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=messages,
+                max_tokens=50,
+                temperature=0.7,
             )
-            chat = model_fallback.start_chat(history=chat_history)
-            response = chat.send_message(text)
-            return response.text.strip()
+            return response.choices[0].message.content.strip()
 
         except Exception as fallback_error:
-            print(f"Gemini 1.5 Fallback Error: {fallback_error}")
-            # Return a random-ish fallback based on message length
+            print(f"Groq Fallback Error: {fallback_error}")
             return FALLBACK_RESPONSES[len(text) % len(FALLBACK_RESPONSES)]
