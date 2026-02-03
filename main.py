@@ -25,7 +25,7 @@ except ImportError:
 # INLINED FRONTEND (CSS & JS)
 # This ensures it works on Vercel Serverless
 # ==========================================
-HTML_TEMPLATE = """
+HTML_TEMPLATE = r"""
 <!DOCTYPE html>
 <html lang="en">
 <head>
