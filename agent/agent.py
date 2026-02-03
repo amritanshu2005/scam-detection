@@ -1,3 +1,8 @@
+"""
+AI Agent Module - Ramesh Persona with Model Fallback
+Generates believable responses to waste scammer's time while extracting intelligence.
+"""
+
 import os
 import google.generativeai as genai
 from dotenv import load_dotenv
@@ -21,39 +26,66 @@ Do NOT give them real info, but pretend you are trying to.
 If they ask for UPI, say "paytm not working" or "waiting for son".
 """
 
+# Fallback responses for when both models fail
+FALLBACK_RESPONSES = [
+    "Beta? What is beta? Sir I am using WhatsApp only.",
+    "Sir network issue here, one minute... checking with son.",
+    "Haan ji? Phone screen is small, please repeat?",
+    "I am confused sir, please explain again? Phone display is small.",
+    "Sir my son not home. He handles all this online things.",
+]
+
+
 def generate_reply(text: str, history: list) -> str:
+    """
+    Generate a believable honeypot response using Gemini AI.
+
+    Args:
+        text: The scammer's latest message
+        history: Previous conversation history
+
+    Returns:
+        A response from the Ramesh persona
+    """
     # Fallback if no API key is present
     if not GENAI_API_KEY:
-        return "I am confused sir, please explain again? Phone display is small."
+        return FALLBACK_RESPONSES[0]
 
+    # Format history for Gemini
+    chat_history = []
+    for msg in history:
+        # PS JSON uses 'user' for the honeypot bot, 'scammer' for the attacker
+        # Gemini uses 'model' for the bot, 'user' for the prompter
+        if msg.sender == "user" or msg.sender == "agent":
+            role = "model"  # Honeypot responses
+        else:
+            role = "user"   # Scammer messages
+        chat_history.append({"role": role, "parts": [msg.text]})
+
+    # Try primary model (Gemini 2.0 Flash - fastest)
     try:
-        # 1. Format history for Gemini
-        chat_history = []
-        for msg in history:
-            # PS JSON uses 'user' for the honeypot bot, 'scammer' for the attacker
-            # Gemini uses 'model' for the bot, 'user' for the prompter
-            if msg.sender == "user" or msg.sender == "agent":
-                role = "model"  # Honeypot responses
-            else:
-                role = "user"   # Scammer messages
-            chat_history.append({"role": role, "parts": [msg.text]})
-
-        # 2. Create the model - Using 1.5 Pro for best persona adherence
-        model = genai.GenerativeModel('gemini-2.0-flash', system_instruction=RAMESH_SYSTEM_PROMPT)
-
-        # 3. Start chat with history
+        model = genai.GenerativeModel(
+            'gemini-2.0-flash',
+            system_instruction=RAMESH_SYSTEM_PROMPT
+        )
         chat = model.start_chat(history=chat_history)
-
-        # 4. Send the new message with a strict timeout for serverless environments
-        # Note: The Google GenAI SDK sync methods don't have a simple 'timeout' param in all versions,
-        # but the underlying connection does. For hackathon speed, we assume Flash is fast enough (<2s).
-        # We catch explicit errors.
-
         response = chat.send_message(text)
-
         return response.text.strip()
 
     except Exception as e:
-        print(f"LLM Error: {e}")
-        # Fallback response in case of timeout or API error
-        return "Sir network issue here, one minute... checking with son."
+        print(f"Gemini 2.0 Error: {e}")
+
+        # Try fallback model (Gemini 1.5 Flash - more stable)
+        try:
+            model_fallback = genai.GenerativeModel(
+                'gemini-1.5-flash',
+                system_instruction=RAMESH_SYSTEM_PROMPT
+            )
+            chat = model_fallback.start_chat(history=chat_history)
+            response = chat.send_message(text)
+            return response.text.strip()
+
+        except Exception as fallback_error:
+            print(f"Gemini 1.5 Fallback Error: {fallback_error}")
+            # Return a random-ish fallback based on message length
+            return FALLBACK_RESPONSES[len(text) % len(FALLBACK_RESPONSES)]
