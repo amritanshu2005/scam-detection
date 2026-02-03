@@ -377,7 +377,7 @@ async def webhook(
     if should_trigger_callback:
         try:
             print(f"Triggering callback for session {session_id}")
-            send_callback(session_id, len(history) + 1, intel)
+            send_callback(session_id, len(history) + 1, intel, full_text)
         except Exception as e:
             print(f"Callback failed: {e}")
 
