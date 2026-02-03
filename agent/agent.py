@@ -30,8 +30,12 @@ def generate_reply(text: str, history: list) -> str:
         # 1. Format history for Gemini
         chat_history = []
         for msg in history:
-            # message.sender is 'scammer' or 'agent'
-            role = "model" if msg.sender == "agent" else "user"
+            # PS JSON uses 'user' for the honeypot bot, 'scammer' for the attacker
+            # Gemini uses 'model' for the bot, 'user' for the prompter
+            if msg.sender == "user" or msg.sender == "agent":
+                role = "model"  # Honeypot responses
+            else:
+                role = "user"   # Scammer messages
             chat_history.append({"role": role, "parts": [msg.text]})
 
         # 2. Create the model - Using 1.5 Pro for best persona adherence

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Header, HTTPException, BackgroundTasks
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import HTMLResponse
 import os
 from dotenv import load_dotenv
@@ -19,33 +19,33 @@ except ImportError as e:
     # If imports fail, create minimal versions for debugging
     from pydantic import BaseModel
     from typing import List, Optional, Dict, Any
-    
+
     class MessageDetail(BaseModel):
         sender: str
         text: str
         timestamp: str
-    
+
     class IncomingRequest(BaseModel):
         sessionId: str
         message: MessageDetail
         conversationHistory: List[MessageDetail]
         metadata: Optional[Dict[str, Any]] = None
-    
+
     class OutgoingResponse(BaseModel):
         status: str
         reply: str
-    
+
     API_KEY = os.getenv("API_KEY", "default-key")
-    
+
     def detect(text: str, history: list) -> bool:
         return False
-    
+
     def generate_reply(text: str, history: list) -> str:
         return "Service temporarily unavailable"
-    
+
     def extract(text: str):
         return {"upiIds": [], "phoneNumbers": [], "bankAccounts": [], "phishingLinks": [], "suspiciousKeywords": []}
-    
+
     def send_callback(*args, **kwargs):
         pass
 
@@ -548,17 +548,17 @@ function setExample(index) {
 async function sendMessage() {
     const messageInput = document.getElementById('messageInput');
     const message = messageInput.value.trim();
-    
+
     if (!message) {
         alert('Please enter a message');
         return;
     }
-    
+
     const sendBtn = document.querySelector('.send-btn');
     const originalText = sendBtn.innerHTML;
     sendBtn.innerHTML = '⏳ Processing...';
     sendBtn.disabled = true;
-    
+
     try {
         const payload = {
             sessionId: "session-" + Date.now(),
@@ -569,7 +569,7 @@ async function sendMessage() {
             },
             conversationHistory: []
         };
-        
+
         const response = await fetch(`${API_BASE_URL}/api/v1/message`, {
             method: 'POST',
             headers: {
@@ -578,25 +578,25 @@ async function sendMessage() {
             },
             body: JSON.stringify(payload)
         });
-        
+
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
         }
-        
+
         const data = await response.json();
-        
+
         addMessageToConversation(message, 'scammer');
         addMessageToConversation(data.reply, 'agent');
-        
+
         stats.totalMessages++;
         stats.scamsDetected++;
-        
+
         updateStats();
-        
+
         showResponse(data);
-        
+
         messageInput.value = '';
-        
+
     } catch (error) {
         console.error('Error:', error);
         alert('Error: ' + error.message);
@@ -608,32 +608,32 @@ async function sendMessage() {
 
 function addMessageToConversation(message, role) {
     const container = document.getElementById('conversationContainer');
-    
+
     const emptyState = container.querySelector('.empty-state');
     if (emptyState) emptyState.remove();
-    
+
     const messageBubble = document.createElement('div');
     messageBubble.className = `message-bubble ${role}`;
-    
+
     const messageContent = document.createElement('div');
     messageContent.className = 'message-content';
     messageContent.textContent = message;
-    
+
     const messageMeta = document.createElement('div');
     messageMeta.className = 'message-meta';
     messageMeta.textContent = `${role === 'scammer' ? 'Scammer' : 'AI Agent'} • ${new Date().toLocaleTimeString()}`;
-    
+
     messageBubble.appendChild(messageContent);
     messageBubble.appendChild(messageMeta);
     container.appendChild(messageBubble);
-    
+
     container.scrollTop = container.scrollHeight;
 }
 
 function showResponse(data) {
     const responseCard = document.getElementById('responseCard');
     const responseMessage = document.getElementById('responseMessage');
-    
+
     responseMessage.textContent = data.reply || 'No response';
     responseCard.style.display = 'block';
 }
@@ -667,7 +667,6 @@ def verify_api_key(x_api_key: str):
 @app.post("/api/v1/message", response_model=OutgoingResponse)
 async def webhook(
     req: IncomingRequest,
-    background_tasks: BackgroundTasks,
     x_api_key: str = Header(...)
 ):
     verify_api_key(x_api_key)
@@ -687,16 +686,17 @@ async def webhook(
     intel = extract(full_text)
 
     # 4. Callback Trigger Strategy
-    critical_count = len(intel["upiIds"]) + len(intel["bankAccounts"]) + len(intel["phoneNumbers"])
+    # Include phishingLinks in critical count for better coverage
+    critical_count = len(intel["upiIds"]) + len(intel["bankAccounts"]) + len(intel["phoneNumbers"]) + len(intel["phishingLinks"])
     should_trigger_callback = is_scam and (len(history) > 8 or critical_count > 0)
 
+    # Send callback synchronously to ensure execution before Vercel freezes the lambda
     if should_trigger_callback:
-        background_tasks.add_task(
-            send_callback,
-            session_id,
-            len(history) + 1,
-            intel
-        )
+        try:
+            print(f"Triggering callback for session {session_id}")
+            send_callback(session_id, len(history) + 1, intel)
+        except Exception as e:
+            print(f"Callback failed (non-blocking): {e}")
 
     return OutgoingResponse(
         status="success",
