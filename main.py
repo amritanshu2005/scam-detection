@@ -7,7 +7,7 @@ load_dotenv()
 
 app = FastAPI(title="Scam Detection API")
 
-# Lazy imports with error handling
+# Lazy imports to ensure Vercel doesn't crash on cold start
 try:
     from models import IncomingRequest, OutgoingResponse
     from detector.scam_detector import detect
@@ -15,41 +15,16 @@ try:
     from extractor.intelligence import extract
     from callback.guvi import send_callback
     from config import API_KEY
-except ImportError as e:
-    # If imports fail, create minimal versions for debugging
+except ImportError:
+    # Fallbacks for local testing if modules miss
     from pydantic import BaseModel
-    from typing import List, Optional, Dict, Any
+    class IncomingRequest(BaseModel): pass
+    class OutgoingResponse(BaseModel): pass
 
-    class MessageDetail(BaseModel):
-        sender: str
-        text: str
-        timestamp: str
-
-    class IncomingRequest(BaseModel):
-        sessionId: str
-        message: MessageDetail
-        conversationHistory: List[MessageDetail]
-        metadata: Optional[Dict[str, Any]] = None
-
-    class OutgoingResponse(BaseModel):
-        status: str
-        reply: str
-
-    API_KEY = os.getenv("API_KEY", "default-key")
-
-    def detect(text: str, history: list) -> bool:
-        return False
-
-    def generate_reply(text: str, history: list) -> str:
-        return "Service temporarily unavailable"
-
-    def extract(text: str):
-        return {"upiIds": [], "phoneNumbers": [], "bankAccounts": [], "phishingLinks": [], "suspiciousKeywords": []}
-
-    def send_callback(*args, **kwargs):
-        pass
-
-# Embedded HTML/CSS/JS - Serve the complete UI
+# ==========================================
+# INLINED FRONTEND (CSS & JS)
+# This ensures it works on Vercel Serverless
+# ==========================================
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -60,355 +35,105 @@ HTML_TEMPLATE = """
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-:root {
-  --bg-main: #e0f2fe;
-  --bg-card: #ffffff;
-  --text-main: #0f172a;
-  --text-muted: #475569;
-  --primary: #a855f7;
-  --secondary: #3b82f6;
-  --accent: #f43f5e;
-  --success: #10b981;
-  --warning: #f59e0b;
-  --border-color: #000000;
-  --border-width: 3px;
-  --shadow-offset: 5px;
-}
-
-body {
-  font-family: "Inter", sans-serif;
-  background-color: var(--bg-main);
-  background-image: radial-gradient(#000000 1px, transparent 1px);
-  background-size: 24px 24px;
-  color: var(--text-main);
-  min-height: 100vh;
-  padding-bottom: 40px;
-}
-
-h1, h2, h3, h4, .logo, .stat-value {
-  font-family: "Space Grotesk", sans-serif;
-}
-
-.container {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 24px;
-}
-
-.header {
-  background: #ffd43b;
-  border: var(--border-width) solid var(--border-color);
-  box-shadow: var(--shadow-offset) var(--shadow-offset) 0px 0px var(--border-color);
-  border-radius: 12px;
-  padding: 20px 32px;
-  margin-bottom: 32px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.logo {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.logo i {
-  font-size: 36px;
-  color: var(--text-main);
-}
-
-.logo h1 {
-  font-size: 32px;
-  font-weight: 700;
-  color: var(--text-main);
-  text-transform: uppercase;
-  letter-spacing: -1px;
-}
-
-.status-indicator {
-  background: var(--bg-card);
-  border: 2px solid var(--border-color);
-  padding: 8px 16px;
-  border-radius: 50px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  box-shadow: 3px 3px 0 0 #000;
-}
-
-.status-dot {
-  width: 12px;
-  height: 12px;
-  background: var(--success);
-  border: 2px solid var(--border-color);
-  border-radius: 50%;
-  animation: blink 1s infinite alternate;
-}
-
-@keyframes blink {
-  from { opacity: 1; }
-  to { opacity: 0.4; }
-}
-
-.dashboard {
-  display: grid;
-  grid-template-columns: 1fr 1.4fr;
-  gap: 32px;
-}
-
-.card {
-  background: var(--bg-card);
-  border: var(--border-width) solid var(--border-color);
-  box-shadow: var(--shadow-offset) var(--shadow-offset) 0px 0px var(--border-color);
-  border-radius: 12px;
-  padding: 24px;
-  margin-bottom: 32px;
-}
-
-.card h2 {
-  font-size: 24px;
-  font-weight: 700;
-  margin-bottom: 24px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  border-bottom: 3px solid var(--border-color);
-  padding-bottom: 12px;
-}
-
-.message-input-card textarea {
-  width: 100%;
-  padding: 16px;
-  background: #f8fafc;
-  border: 3px solid var(--border-color);
-  border-radius: 8px;
-  font-size: 16px;
-  font-family: "Inter", sans-serif;
-  color: var(--text-main);
-  resize: vertical;
-}
-
-.message-input-card textarea:focus {
-  outline: none;
-  background: #fff;
-  box-shadow: 4px 4px 0 0 #000;
-}
-
-.quick-examples {
-  margin: 20px 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.label {
-  font-weight: 700;
-  margin-right: 8px;
-  text-transform: uppercase;
-  font-size: 14px;
-}
-
-.example-btn {
-  padding: 8px 16px;
-  background: #bae6fd;
-  border: 2px solid var(--border-color);
-  border-radius: 6px;
-  font-weight: 600;
-  cursor: pointer;
-  font-family: "Space Grotesk", sans-serif;
-  box-shadow: 2px 2px 0 0 #000;
-}
-
-.example-btn:hover {
-  transform: translate(-2px, -2px);
-  box-shadow: 4px 4px 0 0 #000;
-}
-
-.send-btn {
-  width: 100%;
-  padding: 16px;
-  background: var(--accent);
-  color: white;
-  font-family: "Space Grotesk", sans-serif;
-  font-size: 20px;
-  font-weight: 700;
-  border: 3px solid var(--border-color);
-  border-radius: 8px;
-  cursor: pointer;
-  box-shadow: 6px 6px 0 0 #000;
-  text-transform: uppercase;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 12px;
-}
-
-.send-btn:hover {
-  transform: translate(-3px, -3px);
-  box-shadow: 9px 9px 0 0 #000;
-}
-
-.send-btn:active {
-  transform: translate(2px, 2px);
-  box-shadow: 2px 2px 0 0 #000;
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-}
-
-.stat-item {
-  background: #f0fdf4;
-  border: 3px solid var(--border-color);
-  padding: 16px;
-  text-align: center;
-  border-radius: 8px;
-  box-shadow: 4px 4px 0 0 #000;
-}
-
-.stat-item:nth-child(2) { background: #fee2e2; }
-.stat-item:nth-child(3) { background: #e0f2fe; }
-.stat-item:nth-child(4) { background: #fef3c7; }
-
-.stat-value {
-  font-size: 36px;
-  font-weight: 700;
-  display: block;
-  line-height: 1;
-  margin-bottom: 8px;
-}
-
-.stat-label {
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-
-.performance-metrics {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.perf-item {
-  display: flex;
-  justify-content: space-between;
-  padding: 12px 16px;
-  background: #fff;
-  border: 2px solid var(--border-color);
-  box-shadow: 3px 3px 0 0 #000;
-  border-radius: 6px;
-  font-weight: 600;
-}
-
-.conversation-container {
-  height: 500px;
-  overflow-y: auto;
-  background: #f8fafc;
-  border: 3px solid var(--border-color);
-  box-shadow: inset 4px 4px 0 0 rgba(0, 0, 0, 0.05);
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  border-radius: 8px;
-}
-
-.message-bubble {
-  max-width: 80%;
-  display: flex;
-  flex-direction: column;
-}
-
-.message-bubble.scammer { align-self: flex-start; }
-.message-bubble.agent { align-self: flex-end; }
-
-.message-content {
-  padding: 16px 20px;
-  border: 3px solid var(--border-color);
-  border-radius: 12px;
-  font-size: 15px;
-  line-height: 1.5;
-  font-weight: 500;
-}
-
-.message-bubble.scammer .message-content {
-  background: #fee2e2;
-  border-bottom-left-radius: 0;
-  box-shadow: 4px 4px 0 0 #000;
-}
-
-.message-bubble.agent .message-content {
-  background: #dcfce7;
-  border-bottom-right-radius: 0;
-  box-shadow: -4px 4px 0 0 #000;
-}
-
-.message-meta {
-  font-size: 11px;
-  font-weight: 700;
-  margin-top: 6px;
-  text-transform: uppercase;
-  opacity: 0.6;
-}
-
-.message-bubble.agent .message-meta { text-align: right; }
-
-.response-message {
-  font-family: "Space Grotesk", sans-serif;
-  font-size: 18px;
-  padding: 24px;
-  background: #c7d2fe;
-  border: 3px solid var(--border-color);
-  box-shadow: 4px 4px 0 0 #000;
-  border-radius: 8px;
-  margin-bottom: 24px;
-}
-
-.intel-item-detail {
-  display: inline-block;
-  padding: 6px 12px;
-  margin: 4px;
-  background: #1e293b;
-  color: #4ade80;
-  font-family: "Courier New", monospace;
-  font-weight: 700;
-  border: 2px solid var(--border-color);
-  border-radius: 4px;
-  box-shadow: 3px 3px 0 0 #000;
-}
-
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  gap: 16px;
-  color: var(--text-muted);
-}
-
-.empty-state i {
-  font-size: 48px;
-  opacity: 0.3;
-}
-
-@media (max-width: 768px) {
-  .dashboard {
-    grid-template-columns: 1fr;
-  }
-}
+        /* INLINED STYLES.CSS */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg-main: #e0f2fe; --bg-card: #ffffff; --text-main: #0f172a; --text-muted: #475569;
+            --primary: #a855f7; --secondary: #3b82f6; --accent: #f43f5e; --success: #10b981;
+            --warning: #f59e0b; --border-color: #000000; --border-width: 3px; --shadow-offset: 5px;
+        }
+        body {
+            font-family: "Inter", sans-serif; background-color: var(--bg-main);
+            background-image: radial-gradient(#000000 1px, transparent 1px); background-size: 24px 24px;
+            color: var(--text-main); min-height: 100vh; padding-bottom: 40px;
+        }
+        h1, h2, h3, h4, .logo, .stat-value { font-family: "Space Grotesk", sans-serif; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+        .header {
+            background: #ffd43b; border: var(--border-width) solid var(--border-color);
+            box-shadow: var(--shadow-offset) var(--shadow-offset) 0px 0px var(--border-color);
+            border-radius: 12px; padding: 20px 32px; margin-bottom: 32px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .logo { display: flex; align-items: center; gap: 16px; }
+        .logo i { font-size: 36px; }
+        .logo h1 { font-size: 32px; font-weight: 700; text-transform: uppercase; letter-spacing: -1px; }
+        .status-indicator {
+            background: var(--bg-card); border: 2px solid var(--border-color);
+            padding: 8px 16px; border-radius: 50px; font-weight: 700;
+            display: flex; align-items: center; gap: 8px; box-shadow: 3px 3px 0 0 #000;
+        }
+        .status-dot {
+            width: 12px; height: 12px; background: var(--success);
+            border: 2px solid var(--border-color); border-radius: 50%;
+            animation: blink 1s infinite alternate;
+        }
+        @keyframes blink { from { opacity: 1; } to { opacity: 0.4; } }
+        .dashboard { display: grid; grid-template-columns: 1fr 1.4fr; gap: 32px; }
+        .card {
+            background: var(--bg-card); border: var(--border-width) solid var(--border-color);
+            box-shadow: var(--shadow-offset) var(--shadow-offset) 0px 0px var(--border-color);
+            border-radius: 12px; padding: 24px; margin-bottom: 32px;
+        }
+        .card h2 {
+            font-size: 24px; font-weight: 700; margin-bottom: 24px;
+            display: flex; align-items: center; gap: 12px;
+            border-bottom: 3px solid var(--border-color); padding-bottom: 12px;
+        }
+        textarea {
+            width: 100%; padding: 16px; background: #f8fafc;
+            border: 3px solid var(--border-color); border-radius: 8px;
+            font-size: 16px; font-family: "Inter", sans-serif; resize: vertical;
+        }
+        textarea:focus { outline: none; background: #fff; box-shadow: 4px 4px 0 0 #000; }
+        .quick-examples { margin: 20px 0; display: flex; flex-wrap: wrap; gap: 12px; }
+        .label { font-weight: 700; margin-right: 8px; text-transform: uppercase; font-size: 14px; }
+        .example-btn {
+            padding: 8px 16px; background: #bae6fd; border: 2px solid var(--border-color);
+            border-radius: 6px; font-weight: 600; cursor: pointer;
+            font-family: "Space Grotesk", sans-serif; box-shadow: 2px 2px 0 0 #000;
+        }
+        .example-btn:hover { transform: translate(-2px, -2px); box-shadow: 4px 4px 0 0 #000; }
+        .send-btn {
+            width: 100%; padding: 16px; background: var(--accent); color: white;
+            font-family: "Space Grotesk", sans-serif; font-size: 20px; font-weight: 700;
+            border: 3px solid var(--border-color); border-radius: 8px; cursor: pointer;
+            box-shadow: 6px 6px 0 0 #000; text-transform: uppercase;
+            display: flex; justify-content: center; align-items: center; gap: 12px;
+        }
+        .send-btn:hover { transform: translate(-3px, -3px); box-shadow: 9px 9px 0 0 #000; }
+        .send-btn:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 0 #000; }
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .stat-item {
+            background: #f0fdf4; border: 3px solid var(--border-color);
+            padding: 16px; text-align: center; border-radius: 8px; box-shadow: 4px 4px 0 0 #000;
+        }
+        .stat-value { font-size: 36px; font-weight: 700; display: block; margin-bottom: 8px; }
+        .stat-label { font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); }
+        .conversation-container {
+            height: 500px; overflow-y: auto; background: #f8fafc;
+            border: 3px solid var(--border-color); box-shadow: inset 4px 4px 0 0 rgba(0,0,0,0.05);
+            padding: 20px; display: flex; flex-direction: column; gap: 20px; border-radius: 8px;
+        }
+        .message-bubble { max-width: 80%; display: flex; flex-direction: column; }
+        .message-bubble.scammer { align-self: flex-start; }
+        .message-bubble.agent { align-self: flex-end; }
+        .message-content {
+            padding: 16px 20px; border: 3px solid var(--border-color);
+            border-radius: 12px; font-size: 15px; line-height: 1.5; font-weight: 500;
+        }
+        .message-bubble.scammer .message-content { background: #fee2e2; border-bottom-left-radius: 0; box-shadow: 4px 4px 0 0 #000; }
+        .message-bubble.agent .message-content { background: #dcfce7; border-bottom-right-radius: 0; box-shadow: -4px 4px 0 0 #000; text-align: right; }
+        .message-meta { font-size: 11px; font-weight: 700; margin-top: 6px; text-transform: uppercase; opacity: 0.6; }
+        .message-bubble.agent .message-meta { text-align: right; }
+        .response-message {
+            font-family: "Space Grotesk", sans-serif; font-size: 18px; padding: 24px;
+            background: #c7d2fe; border: 3px solid var(--border-color);
+            box-shadow: 4px 4px 0 0 #000; border-radius: 8px; margin-bottom: 24px;
+        }
+        .intel-item { margin-bottom: 12px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+        .intel-item i { width: 20px; text-align: center; }
+        @media (max-width: 768px) { .dashboard { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
@@ -429,14 +154,13 @@ h1, h2, h3, h4, .logo, .stat-value {
                 <div class="card message-input-card">
                     <h2><i class="fas fa-comment-dots"></i> Simulate Scam Message</h2>
                     <div class="input-group">
-                        <textarea id="messageInput" placeholder="Enter a scam message to test the system..." rows="4"></textarea>
+                        <textarea id="messageInput" placeholder="Enter a scam message..." rows="4"></textarea>
                     </div>
                     <div class="quick-examples">
                         <span class="label">Quick Examples:</span>
-                        <button class="example-btn" onclick="setExample(0)">Bank Suspension</button>
-                        <button class="example-btn" onclick="setExample(1)">Prize Winner</button>
-                        <button class="example-btn" onclick="setExample(2)">UPI Verification</button>
-                        <button class="example-btn" onclick="setExample(3)">Phishing Link</button>
+                        <button class="example-btn" onclick="setExample(0)">Bank</button>
+                        <button class="example-btn" onclick="setExample(1)">Prize</button>
+                        <button class="example-btn" onclick="setExample(2)">UPI</button>
                     </div>
                     <button class="send-btn" onclick="sendMessage()">
                         <i class="fas fa-paper-plane"></i> Process Message
@@ -444,70 +168,45 @@ h1, h2, h3, h4, .logo, .stat-value {
                 </div>
 
                 <div class="card stats-card">
-                    <h2><i class="fas fa-chart-line"></i> Statistics</h2>
+                    <h2><i class="fas fa-chart-line"></i> Session Stats</h2>
                     <div class="stats-grid">
                         <div class="stat-item">
                             <div class="stat-value" id="totalMessages">0</div>
-                            <div class="stat-label">Messages Processed</div>
+                            <div class="stat-label">Messages</div>
                         </div>
                         <div class="stat-item">
                             <div class="stat-value" id="scamsDetected">0</div>
-                            <div class="stat-label">Scams Detected</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-value" id="intelligenceFound">0</div>
-                            <div class="stat-label">Intelligence Items</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-value" id="avgEngagement">0s</div>
-                            <div class="stat-label">Avg Engagement</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="card performance-card">
-                    <h2><i class="fas fa-tachometer-alt"></i> Performance</h2>
-                    <div class="performance-metrics">
-                        <div class="perf-item">
-                            <span>Avg Response Time:</span>
-                            <span id="avgResponseTime">0ms</span>
-                        </div>
-                        <div class="perf-item">
-                            <span>Detection Accuracy:</span>
-                            <span id="detectionAccuracy">-</span>
+                            <div class="stat-label">Scams</div>
                         </div>
                     </div>
                 </div>
 
                 <div class="card intelligence-card">
-                    <h2><i class="fas fa-search"></i> Extracted Intelligence</h2>
+                    <h2><i class="fas fa-search"></i> Extracted Intel</h2>
                     <div class="intelligence-summary">
-                        <div>
-                            <i class="fas fa-university"></i> Bank Accounts: <strong id="bankCount">0</strong>
-                        </div>
-                        <div>
-                            <i class="fas fa-mobile-alt"></i> UPI IDs: <strong id="upiCount">0</strong>
-                        </div>
-                        <div>
-                            <i class="fas fa-link"></i> Phishing URLs: <strong id="urlCount">0</strong>
-                        </div>
+                        <div class="intel-item"><i class="fas fa-university"></i> Bank Accounts: <strong id="bankCount">0</strong></div>
+                        <div class="intel-item"><i class="fas fa-mobile-alt"></i> UPI IDs: <strong id="upiCount">0</strong></div>
+                        <div class="intel-item"><i class="fas fa-link"></i> Links: <strong id="urlCount">0</strong></div>
                     </div>
                 </div>
             </div>
 
             <div class="right-panel">
                 <div class="card conversation-card">
-                    <h2><i class="fas fa-comments"></i> Conversation</h2>
+                    <div class="card-header" style="display:flex; justify-content:space-between;">
+                        <h2><i class="fas fa-comments"></i> Conversation</h2>
+                        <button onclick="location.reload()" style="background:none; border:none; cursor:pointer; font-weight:bold;">Clear</button>
+                    </div>
                     <div class="conversation-container" id="conversationContainer">
-                        <div class="empty-state">
-                            <i class="fas fa-inbox"></i>
-                            <p>No messages yet. Send a test message to start!</p>
+                        <div class="empty-state" style="text-align:center; padding-top:100px; opacity:0.5;">
+                            <i class="fas fa-inbox" style="font-size:48px;"></i>
+                            <p>No messages yet.</p>
                         </div>
                     </div>
                 </div>
 
                 <div class="card response-card" id="responseCard" style="display: none;">
-                    <h2><i class="fas fa-robot"></i> Agent Response</h2>
+                    <h2><i class="fas fa-robot"></i> Agent Reply</h2>
                     <div class="response-message" id="responseMessage"></div>
                 </div>
             </div>
@@ -515,154 +214,123 @@ h1, h2, h3, h4, .logo, .stat-value {
     </div>
 
     <script>
-const API_BASE_URL = window.location.origin;
-const API_KEY = localStorage.getItem('API_KEY') || 'test-api-key-12345';
+        // INLINED SCRIPT.JS
+        const API_BASE_URL = window.location.origin;
+        // Try to get key from URL ?key=XYZ or prompt user if missing in code
+        const API_KEY = "test-api-key-12345";
 
-let stats = {
-    totalMessages: 0,
-    scamsDetected: 0,
-    intelligenceFound: 0
-};
+        let stats = { totalMessages: 0, scamsDetected: 0 };
+        let intelligence = { bank_accounts: [], upi_ids: [], phishing_urls: [] };
 
-let intelligence = {
-    bank_accounts: [],
-    upi_ids: [],
-    phishing_urls: []
-};
+        const examples = [
+            "Your bank account has been suspended due to suspicious activity. Click here to verify: http://fake-bank-verify.com/secure",
+            "Congratulations! You have won 1,00,000 rupees in our lottery! Send your bank account number.",
+            "Urgent: Your UPI needs verification. Share your UPI ID and account details to reactivate your account."
+        ];
 
-const examples = [
-    "Your bank account has been suspended due to suspicious activity. Click here to verify: http://fake-bank-verify.com/secure",
-    "Congratulations! You have won 1,00,000 rupees in our lottery! Send your bank account number to claim your prize immediately!",
-    "Urgent: Your UPI needs verification. Share your UPI ID and account details to reactivate your account. Account number: 123456789012",
-    "Your account will be blocked in 24 hours. Verify now at https://suspicious-link.com/verify?token=abc123"
-];
-
-document.addEventListener('DOMContentLoaded', () => {
-    updateStats();
-});
-
-function setExample(index) {
-    document.getElementById('messageInput').value = examples[index];
-}
-
-async function sendMessage() {
-    const messageInput = document.getElementById('messageInput');
-    const message = messageInput.value.trim();
-
-    if (!message) {
-        alert('Please enter a message');
-        return;
-    }
-
-    const sendBtn = document.querySelector('.send-btn');
-    const originalText = sendBtn.innerHTML;
-    sendBtn.innerHTML = '⏳ Processing...';
-    sendBtn.disabled = true;
-
-    try {
-        const payload = {
-            sessionId: "session-" + Date.now(),
-            message: {
-                sender: "scammer",
-                text: message,
-                timestamp: new Date().toISOString()
-            },
-            conversationHistory: []
-        };
-
-        const response = await fetch(`${API_BASE_URL}/api/v1/message`, {
-            method: 'POST',
-            headers: {
-                'X-API-Key': API_KEY,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(payload)
-        });
-
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+        function setExample(index) {
+            document.getElementById('messageInput').value = examples[index];
         }
 
-        const data = await response.json();
+        async function sendMessage() {
+            const messageInput = document.getElementById('messageInput');
+            const message = messageInput.value.trim();
+            if (!message) return alert('Please enter a message');
 
-        addMessageToConversation(message, 'scammer');
-        addMessageToConversation(data.reply, 'agent');
+            const sendBtn = document.querySelector('.send-btn');
+            const originalText = sendBtn.innerHTML;
+            sendBtn.innerHTML = '⏳ Processing...';
+            sendBtn.disabled = true;
 
-        stats.totalMessages++;
-        stats.scamsDetected++;
+            try {
+                const payload = {
+                    sessionId: "session-" + Date.now(),
+                    message: {
+                        sender: "scammer",
+                        text: message,
+                        timestamp: new Date().toISOString()
+                    },
+                    conversationHistory: [] // Simplification for UI demo
+                };
 
-        updateStats();
+                // Add current history from UI if we were building a full chat client
+                // For hackathon demo, sending single turns is often safer to show detection
 
-        showResponse(data);
+                const response = await fetch(`${API_BASE_URL}/api/v1/message`, {
+                    method: 'POST',
+                    headers: {
+                        'X-API-Key': API_KEY,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
 
-        messageInput.value = '';
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
 
-    } catch (error) {
-        console.error('Error:', error);
-        alert('Error: ' + error.message);
-    } finally {
-        sendBtn.innerHTML = originalText;
-        sendBtn.disabled = false;
-    }
-}
+                addMessageToConversation(message, 'scammer');
+                addMessageToConversation(data.reply, 'agent');
 
-function addMessageToConversation(message, role) {
-    const container = document.getElementById('conversationContainer');
+                stats.totalMessages++;
+                if (data.reply && data.reply !== "Service temporarily unavailable") stats.scamsDetected++;
+                updateStats();
 
-    const emptyState = container.querySelector('.empty-state');
-    if (emptyState) emptyState.remove();
+                // Update Intel (Mocking extraction count based on logic for demo)
+                // In a real app, you'd want the API to return the extracted intel in the response body
+                // But the strict hackathon schema doesn't return intel in the response body!
+                // So for the UI demo, we just increment based on text regex client side for visual feedback
+                const bankMatch = message.match(/\b\d{9,18}\b/);
+                if(bankMatch) { intelligence.bank_accounts.push(bankMatch[0]); document.getElementById('bankCount').innerText = intelligence.bank_accounts.length; }
 
-    const messageBubble = document.createElement('div');
-    messageBubble.className = `message-bubble ${role}`;
+                showResponse(data);
+                messageInput.value = '';
 
-    const messageContent = document.createElement('div');
-    messageContent.className = 'message-content';
-    messageContent.textContent = message;
+            } catch (error) {
+                console.error(error);
+                alert('Error: ' + error.message);
+            } finally {
+                sendBtn.innerHTML = originalText;
+                sendBtn.disabled = false;
+            }
+        }
 
-    const messageMeta = document.createElement('div');
-    messageMeta.className = 'message-meta';
-    messageMeta.textContent = `${role === 'scammer' ? 'Scammer' : 'AI Agent'} • ${new Date().toLocaleTimeString()}`;
+        function addMessageToConversation(message, role) {
+            const container = document.getElementById('conversationContainer');
+            const emptyState = container.querySelector('.empty-state');
+            if (emptyState) emptyState.remove();
 
-    messageBubble.appendChild(messageContent);
-    messageBubble.appendChild(messageMeta);
-    container.appendChild(messageBubble);
+            const bubble = document.createElement('div');
+            bubble.className = `message-bubble ${role}`;
+            bubble.innerHTML = `
+                <div class="message-content">${message}</div>
+                <div class="message-meta">${role === 'scammer' ? 'Scammer' : 'AI Agent'} • Just now</div>
+            `;
+            container.appendChild(bubble);
+            container.scrollTop = container.scrollHeight;
+        }
 
-    container.scrollTop = container.scrollHeight;
-}
+        function showResponse(data) {
+            const card = document.getElementById('responseCard');
+            document.getElementById('responseMessage').textContent = data.reply;
+            card.style.display = 'block';
+        }
 
-function showResponse(data) {
-    const responseCard = document.getElementById('responseCard');
-    const responseMessage = document.getElementById('responseMessage');
-
-    responseMessage.textContent = data.reply || 'No response';
-    responseCard.style.display = 'block';
-}
-
-function updateStats() {
-    document.getElementById('totalMessages').textContent = stats.totalMessages;
-    document.getElementById('scamsDetected').textContent = stats.scamsDetected;
-    document.getElementById('intelligenceFound').textContent = stats.intelligenceFound;
-}
-
-document.getElementById('messageInput').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        sendMessage();
-    }
-});
+        function updateStats() {
+            document.getElementById('totalMessages').textContent = stats.totalMessages;
+            document.getElementById('scamsDetected').textContent = stats.scamsDetected;
+        }
     </script>
 </body>
 </html>
 """
 
-@app.get("/", response_class=HTMLResponse)
-async def read_root():
-    """Serve the main dashboard"""
-    return HTML_TEMPLATE
-
 def verify_api_key(x_api_key: str):
     if x_api_key != API_KEY:
         raise HTTPException(status_code=401, detail="Invalid API Key")
+
+@app.get("/", response_class=HTMLResponse)
+async def read_root():
+    return HTML_TEMPLATE
 
 @app.post("/api/v1/message", response_model=OutgoingResponse)
 async def webhook(
@@ -685,25 +353,22 @@ async def webhook(
     full_text = " ".join([m.text for m in history] + [text])
     intel = extract(full_text)
 
-    # 4. Callback Trigger Strategy
-    # Include phishingLinks in critical count for better coverage
+    # 4. Callback Strategy
     critical_count = len(intel["upiIds"]) + len(intel["bankAccounts"]) + len(intel["phoneNumbers"]) + len(intel["phishingLinks"])
     should_trigger_callback = is_scam and (len(history) > 8 or critical_count > 0)
 
-    # Send callback synchronously to ensure execution before Vercel freezes the lambda
     if should_trigger_callback:
         try:
             print(f"Triggering callback for session {session_id}")
             send_callback(session_id, len(history) + 1, intel)
         except Exception as e:
-            print(f"Callback failed (non-blocking): {e}")
+            print(f"Callback failed: {e}")
 
     return OutgoingResponse(
         status="success",
         reply=reply
     )
 
-# For local development and Railway deployment
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
