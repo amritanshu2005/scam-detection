@@ -272,15 +272,32 @@ HTML_TEMPLATE = """
                 addMessageToConversation(data.reply, 'agent');
 
                 stats.totalMessages++;
-                if (data.reply && data.reply !== "Service temporarily unavailable") stats.scamsDetected++;
+                // If reply isn't the fallback, assume detection worked
+                if (data.reply && !data.reply.includes("network issue")) stats.scamsDetected++;
                 updateStats();
 
-                // Update Intel (Mocking extraction count based on logic for demo)
-                // In a real app, you'd want the API to return the extracted intel in the response body
-                // But the strict hackathon schema doesn't return intel in the response body!
-                // So for the UI demo, we just increment based on text regex client side for visual feedback
+                // --- REAL-TIME INTEL EXTRACTION (CLIENT SIDE VISUALS) ---
+                // 1. Bank Accounts (9-18 digits)
                 const bankMatch = message.match(/\b\d{9,18}\b/);
-                if(bankMatch) { intelligence.bank_accounts.push(bankMatch[0]); document.getElementById('bankCount').innerText = intelligence.bank_accounts.length; }
+                if(bankMatch) {
+                    intelligence.bank_accounts.push(bankMatch[0]);
+                    document.getElementById('bankCount').innerText = intelligence.bank_accounts.length;
+                }
+
+                // 2. UPI IDs (something@something)
+                const upiMatch = message.match(/[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}/);
+                if(upiMatch) {
+                    intelligence.upi_ids.push(upiMatch[0]);
+                    document.getElementById('upiCount').innerText = intelligence.upi_ids.length;
+                }
+
+                // 3. Links (http/https)
+                const linkMatch = message.match(/https?:\/\/[^\s]+/);
+                if(linkMatch) {
+                    intelligence.phishing_urls.push(linkMatch[0]);
+                    document.getElementById('urlCount').innerText = intelligence.phishing_urls.length;
+                }
+                // ---------------------------------------------------------
 
                 showResponse(data);
                 messageInput.value = '';

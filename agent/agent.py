@@ -78,7 +78,7 @@ def generate_reply(text: str, history: list) -> str:
         # Try fallback model (Gemini 1.5 Flash - more stable)
         try:
             model_fallback = genai.GenerativeModel(
-                'gemini-1.5-flash',
+                'gemini-1.5-flash-latest',
                 system_instruction=RAMESH_SYSTEM_PROMPT
             )
             chat = model_fallback.start_chat(history=chat_history)
