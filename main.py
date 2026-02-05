@@ -1,25 +1,43 @@
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, BackgroundTasks
 from fastapi.responses import HTMLResponse
 import os
 from dotenv import load_dotenv
+from pydantic import BaseModel
+from typing import List, Optional, Dict, Any
 
 load_dotenv()
 
+# Get API_KEY early
+API_KEY = os.getenv("API_KEY", "test-api-key-12345")
+
 app = FastAPI(title="Scam Detection API")
 
-# Lazy imports to ensure Vercel doesn't crash on cold start
-try:
-    from models import IncomingRequest, OutgoingResponse
-    from detector.scam_detector import detect
-    from agent.agent import generate_reply
-    from extractor.intelligence import extract
-    from callback.guvi import send_callback
-    from config import API_KEY
-except ImportError:
-    # Fallbacks for local testing if modules miss
-    from pydantic import BaseModel
-    class IncomingRequest(BaseModel): pass
-    class OutgoingResponse(BaseModel): pass
+# Session storage for conversation tracking (in-memory)
+sessions = {}
+
+# Define models directly here to avoid import issues
+class MessageDetail(BaseModel):
+    sender: str
+    text: str
+    timestamp: str
+
+class IncomingRequest(BaseModel):
+    sessionId: str
+    message: MessageDetail
+    conversationHistory: List[MessageDetail] = []
+    metadata: Optional[Dict[str, Any]] = None
+
+class OutgoingResponse(BaseModel):
+    status: str
+    reply: str
+    is_scam: bool = False
+    intel: Optional[Dict[str, Any]] = None
+
+# Import the business logic
+from detector.scam_detector import detect
+from agent.agent import generate_reply
+from extractor.intelligence import extract
+from callback.guvi import send_callback
 
 # ==========================================
 # INLINED FRONTEND (CSS & JS)
@@ -269,11 +287,12 @@ HTML_TEMPLATE = r"""
                 const data = await response.json();
 
                 addMessageToConversation(message, 'scammer');
-                addMessageToConversation(data.reply, 'agent');
+                // Pass agent reply as an object so we can attach intel to the bubble
+                addMessageToConversation({ text: data.reply, intel: data.intel }, 'agent');
 
                 stats.totalMessages++;
                 // If reply isn't the fallback, assume detection worked
-                if (data.reply && !data.reply.includes("network issue")) stats.scamsDetected++;
+                if (data.is_scam) stats.scamsDetected++;
                 updateStats();
 
                 // --- REAL-TIME INTEL EXTRACTION (CLIENT SIDE VISUALS) ---
@@ -318,17 +337,109 @@ HTML_TEMPLATE = r"""
 
             const bubble = document.createElement('div');
             bubble.className = `message-bubble ${role}`;
-            bubble.innerHTML = `
-                <div class="message-content">${message}</div>
-                <div class="message-meta">${role === 'scammer' ? 'Scammer' : 'AI Agent'} • Just now</div>
-            `;
+
+            // Support both string messages and message objects with intel
+            let contentText = '';
+            let intel = null;
+            if (typeof message === 'object' && message !== null) {
+                contentText = message.text || '';
+                intel = message.intel || null;
+            } else {
+                contentText = String(message);
+            }
+
+            const contentEl = document.createElement('div');
+            contentEl.className = 'message-content';
+            contentEl.textContent = contentText;
+            bubble.appendChild(contentEl);
+
+            // If agent bubble contains intel, render a small intel list below
+            if (role === 'agent' && intel) {
+                const intelBox = document.createElement('div');
+                intelBox.style.marginTop = '8px';
+                intelBox.style.padding = '8px';
+                intelBox.style.borderTop = '1px dashed rgba(0,0,0,0.1)';
+                intelBox.style.fontSize = '13px';
+                intelBox.style.fontWeight = '700';
+                intelBox.innerHTML = '<div style="margin-bottom:6px;">Extracted Intel:</div>';
+                const u = document.createElement('ul');
+                u.style.margin = '0'; u.style.paddingLeft = '18px'; u.style.fontWeight = '600';
+
+                if (intel.upiIds && intel.upiIds.length) {
+                    const li = document.createElement('li'); li.textContent = 'UPI: ' + intel.upiIds.join(', '); u.appendChild(li);
+                }
+                if (intel.bankAccounts && intel.bankAccounts.length) {
+                    const li = document.createElement('li'); li.textContent = 'Accounts: ' + intel.bankAccounts.join(', '); u.appendChild(li);
+                }
+                if (intel.phoneNumbers && intel.phoneNumbers.length) {
+                    const li = document.createElement('li'); li.textContent = 'Phones: ' + intel.phoneNumbers.join(', '); u.appendChild(li);
+                }
+                if (intel.phishingLinks && intel.phishingLinks.length) {
+                    const li = document.createElement('li'); li.textContent = 'Links: ' + intel.phishingLinks.join(', '); u.appendChild(li);
+                }
+                if (intel.suspiciousKeywords && intel.suspiciousKeywords.length) {
+                    const li = document.createElement('li'); li.textContent = 'Keywords: ' + intel.suspiciousKeywords.join(', '); u.appendChild(li);
+                }
+
+                if (u.childElementCount > 0) intelBox.appendChild(u);
+                bubble.appendChild(intelBox);
+            }
+
+            const meta = document.createElement('div');
+            meta.className = 'message-meta';
+            meta.textContent = `${role === 'scammer' ? 'Scammer' : 'AI Agent'} • Just now`;
+            bubble.appendChild(meta);
+
             container.appendChild(bubble);
             container.scrollTop = container.scrollHeight;
         }
 
         function showResponse(data) {
             const card = document.getElementById('responseCard');
-            document.getElementById('responseMessage').textContent = data.reply;
+            const msgEl = document.getElementById('responseMessage');
+            // Clear previous
+            msgEl.innerHTML = '';
+
+            // If backend classified as scam, show badge and intel
+            if (data.is_scam) {
+                const badge = document.createElement('div');
+                badge.style.background = '#fee2e2';
+                badge.style.border = '2px solid #f43f5e';
+                badge.style.padding = '8px 12px';
+                badge.style.borderRadius = '8px';
+                badge.style.fontWeight = '800';
+                badge.style.marginBottom = '12px';
+                badge.textContent = '⚠️ Scam Alert — classified as FRAUDULENT';
+                msgEl.appendChild(badge);
+
+                if (data.intel) {
+                    const intelContainer = document.createElement('div');
+                    intelContainer.style.marginBottom = '12px';
+                    intelContainer.innerHTML = '<strong>Extracted Intel:</strong>';
+                    const list = document.createElement('ul');
+                    list.style.marginTop = '8px';
+                    if (data.intel.upiIds && data.intel.upiIds.length) {
+                        const li = document.createElement('li'); li.textContent = 'UPI: ' + data.intel.upiIds.join(', '); list.appendChild(li);
+                    }
+                    if (data.intel.bankAccounts && data.intel.bankAccounts.length) {
+                        const li = document.createElement('li'); li.textContent = 'Accounts: ' + data.intel.bankAccounts.join(', '); list.appendChild(li);
+                    }
+                    if (data.intel.phoneNumbers && data.intel.phoneNumbers.length) {
+                        const li = document.createElement('li'); li.textContent = 'Phones: ' + data.intel.phoneNumbers.join(', '); list.appendChild(li);
+                    }
+                    if (data.intel.phishingLinks && data.intel.phishingLinks.length) {
+                        const li = document.createElement('li'); li.textContent = 'Links: ' + data.intel.phishingLinks.join(', '); list.appendChild(li);
+                    }
+                    if (list.childElementCount > 0) intelContainer.appendChild(list);
+                    msgEl.appendChild(intelContainer);
+                }
+            }
+
+            // Persona reply (may include alert prefix as well)
+            const p = document.createElement('div');
+            p.textContent = data.reply;
+            msgEl.appendChild(p);
+
             card.style.display = 'block';
         }
 
@@ -341,7 +452,9 @@ HTML_TEMPLATE = r"""
 </html>
 """
 
+# Now that API_KEY is defined, we can use it in verify_api_key
 def verify_api_key(x_api_key: str):
+    global API_KEY
     if x_api_key != API_KEY:
         raise HTTPException(status_code=401, detail="Invalid API Key")
 
@@ -352,41 +465,114 @@ async def read_root():
 @app.post("/api/v1/message", response_model=OutgoingResponse)
 async def webhook(
     req: IncomingRequest,
-    x_api_key: str = Header(...)
+    x_api_key: str = Header(...),
+    background_tasks: BackgroundTasks = None,
 ):
-    verify_api_key(x_api_key)
+    try:
+        verify_api_key(x_api_key)
 
-    text = req.message.text
-    history = req.conversationHistory
-    session_id = req.sessionId
+        text = req.message.text
+        history = req.conversationHistory if req.conversationHistory else []
+        session_id = req.sessionId
 
-    # 1. Detect
-    is_scam = detect(text, history)
+        # Initialize session if not exists
+        if session_id not in sessions:
+            sessions[session_id] = {
+                "messages": [],
+                "scam_detected": False,
+                "total_messages": 0,
+                "intelligence": {}
+            }
 
-    # 2. Reply
-    reply = generate_reply(text, history)
+        session = sessions[session_id]
 
-    # 3. Extract (Full history check)
-    full_text = " ".join([m.text for m in history] + [text])
-    intel = extract(full_text)
+        # 1. Detect scam
+        is_scam = detect(text, history)
+        if is_scam:
+            session["scam_detected"] = True
 
-    # 4. Callback Strategy
-    critical_count = len(intel["upiIds"]) + len(intel["bankAccounts"]) + len(intel["phoneNumbers"]) + len(intel["phishingLinks"])
-    should_trigger_callback = is_scam and (len(history) > 8 or critical_count > 0)
+        # 2. Generate reply from agent
+        # Pass MessageDetail objects to generate_reply
+        reply = generate_reply(text, history)
 
-    if should_trigger_callback:
-        try:
-            print(f"Triggering callback for session {session_id}")
-            send_callback(session_id, len(history) + 1, intel, full_text)
-        except Exception as e:
-            print(f"Callback failed: {e}")
+        # 3. Add current exchange to session history (scammer then agent)
+        session["messages"].append({
+            "sender": "scammer",
+            "text": text,
+            "timestamp": req.message.timestamp
+        })
+        session["messages"].append({
+            "sender": "agent",
+            "text": reply,
+            "timestamp": req.message.timestamp
+        })
+        session["total_messages"] = len(session["messages"])
 
-    return OutgoingResponse(
-        status="success",
-        reply=reply
-    )
+        # 4. Extract intelligence from full conversation
+        full_conversation = [msg["text"] for msg in session["messages"]]
+        full_text = " ".join(full_conversation)
+        intel = extract(full_text)
+        session["intelligence"] = intel
 
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.getenv("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+        # If scam detected, prepend a clear classification/alert so the reply answers
+        # whether the message is fraudulent before continuing the persona reply.
+        if is_scam:
+            # Summarize any critical intel we found
+            intel_summary_parts = []
+            if intel.get("upiIds"):
+                intel_summary_parts.append(f"UPI: {', '.join(intel.get('upiIds'))}")
+            if intel.get("phoneNumbers"):
+                intel_summary_parts.append(f"Phones: {', '.join(intel.get('phoneNumbers'))}")
+            if intel.get("phishingLinks"):
+                intel_summary_parts.append(f"Links: {', '.join(intel.get('phishingLinks'))}")
+            if intel.get("bankAccounts"):
+                intel_summary_parts.append(f"Accounts: {', '.join(intel.get('bankAccounts'))}")
+
+            intel_summary = "; ".join(intel_summary_parts) if intel_summary_parts else ""
+
+            alert_prefix = "⚠️ Scam Alert: This message appears fraudulent. DO NOT call or share any details."
+            if intel_summary:
+                alert_prefix += f" Detected intel: {intel_summary}."
+
+            # Use a concise safety-first reply instead of emotional persona text.
+            safety_text = (
+                "This is fraudulent. Do not click any links or share personal/financial "
+                "information. Contact your nearest police station and report the incident to your bank immediately."
+            )
+            reply = f"{alert_prefix}\n\n{safety_text}"
+
+        # 5. Log detection results
+        print(f"[SESSION {session_id}] Scam: {is_scam}, Messages: {session['total_messages']}, Intel: {len([i for i in intel.values() if isinstance(i, list) and len(i) > 0])}")
+
+        # 6. Optionally trigger callback asynchronously (non-blocking)
+        should_trigger_callback = (
+            is_scam and (
+                len(intel.get("upiIds", [])) > 0 or
+                len(intel.get("bankAccounts", [])) > 0 or
+                len(intel.get("phishingLinks", [])) > 0 or
+                session["total_messages"] > 6
+            )
+        )
+        if should_trigger_callback and background_tasks is not None:
+            try:
+                background_tasks.add_task(send_callback, session_id, session["total_messages"], intel, full_text)
+                session["callback_sent"] = True
+            except Exception as e:
+                print(f"[ERROR] Failed to schedule callback: {e}")
+
+        return OutgoingResponse(
+            status="success",
+            reply=reply,
+            is_scam=is_scam,
+            intel=intel
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Webhook processing failed: {str(e)}", exc_info=True)
+        return OutgoingResponse(
+            status="error",
+            reply="Error processing message"
+        )
+
+# Note: Use run_server.py to start the server instead
